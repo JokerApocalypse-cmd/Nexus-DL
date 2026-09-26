@@ -3,14 +3,16 @@
 # ============================================================================
 #
 # Ce fichier définit la configuration complète du projet Python NexusDL.
-# Il gère les métadonnées, les dépendances, les points d'entrée et la 
-# configuration de tous les outils de développement (linting, typing, testing).
+# Il remplace setup.py et requirements.txt par une configuration moderne.
 #
-# Installation en mode développement (avec tous les outils) :
+# Installation en mode développement :
 #   pip install -e ".[dev]"
 #
 # Installation pour la production (backend + CLI) :
 #   pip install -e ".[cli,web]"
+#
+# Installation complète (toutes les interfaces) :
+#   pip install -e ".[all]"
 #
 # ============================================================================
 
@@ -56,44 +58,59 @@ classifiers = [
 ]
 requires-python = ">=3.11"
 
-# CORRECTION 1 : dependencies doit être DANS la section [project]
+# ============================================================================
+# DÉPENDANCES PRINCIPALES (CORE)
+# ============================================================================
+
 dependencies = [
     # --- HTTP & Networking ---
-    "httpx>=0.27.0",          # Client HTTP asynchrone principal
-    "aiohttp>=3.9.0",         # Client HTTP alternatif (certains parsers)
-    "websockets>=12.0",       # Client/Serveur WebSocket
+    "httpx>=0.27.0",
+    "aiohttp>=3.9.0",
+    "websockets>=12.0",
     
     # --- Parsing & Scraping ---
-    "beautifulsoup4>=4.12.0", # Parsing HTML
-    "lxml>=5.0.0",            # Parsing HTML/XML rapide
-    "playwright>=1.40.0",     # Rendu JavaScript (Cloudflare bypass)
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.0.0",
+    "playwright>=1.40.0",
+    "selectolax>=0.3.21",
     
     # --- Data & Validation ---
-    "pydantic>=2.5.0",        # Validation des données
-    "pydantic-settings>=2.1.0", # Gestion de la configuration via Pydantic
-    "pyyaml>=6.0.1",          # Fichiers de configuration YAML
-     "jsonschema>=4.20",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "pyyaml>=6.0.1",
+    "jsonschema>=4.20.0",
     
     # --- Database & Storage ---
-    "aiosqlite>=0.19.0",      # Base de données SQLite asynchrone (Library)
-    "aiofiles>=23.2.0",       # Opérations fichier asynchrones
+    "aiosqlite>=0.19.0",
+    "aiofiles>=23.2.0",
+    "sqlite-utils>=3.38",
+    "sqlite-fts4>=1.0.3",
     
     # --- Image & Packaging ---
-    "pillow>=10.1.0",         # Traitement d'images
-    "img2pdf>=0.5.0",         # Conversion images vers PDF
-    "zipfile-deflate64>=0.2.0", # Support compression améliorée pour CBZ/ZIP
+    "pillow>=10.1.0",
+    "img2pdf>=0.5.0",
+    "pikepdf>=9.4.2",
+    "zipfile-deflate64>=0.2.0",
     
     # --- Web Backend (FastAPI) ---
-    "fastapi>=0.109.0",       # Framework API REST
-    "uvicorn[standard]>=0.27.0", # Serveur ASGI
-    "python-multipart>=0.0.6", # Support des formulaires FastAPI
-    "passlib[bcrypt]>=1.7.4", # Hachage des mots de passe
-    "pyjwt>=2.8.0",           # Tokens JWT
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "python-multipart>=0.0.6",
+    "passlib[bcrypt]>=1.7.4",
+    "pyjwt>=2.8.0",
     
     # --- Logging & Utils ---
-    "loguru>=0.7.2",          # Système de logging moderne
-    "rich>=13.7.0",           # Affichage terminal riche (fallback CLI)
-    "click>=8.1.7",           # CLI simple (pour les commandes rapides)
+    "loguru>=0.7.2",
+    "rich>=13.7.0",
+    "click>=8.1.7",
+    "typer>=0.15.0",
+    "python-dotenv>=1.0.1",
+    "python-slugify>=8.0.4",
+    "unidecode>=1.3.8",
+    "humanize>=4.11.0",
+    "tabulate>=0.9.0",
+    "tenacity>=9.0.0",
+    "orjson>=3.10.0",
 ]
 
 # ============================================================================
@@ -123,12 +140,24 @@ dev = [
     "types-PyYAML>=6.0.12",
     "types-requests>=2.31.0",
     "types-beautifulsoup4>=4.12.0",
+    "types-jsonschema>=4.20.0",
+    "types-passlib>=1.7.7",
+    "types-Pillow>=10.2.0",
+    "types-aiofiles>=23.2.0",
+    "types-python-dateutil>=2.8.19",
+    "types-setuptools>=68.0.0",
     # Testing
     "pytest>=7.4.4",
     "pytest-asyncio>=0.23.3",
     "pytest-cov>=4.1.0",
     "pytest-mock>=3.12.0",
-    # Build & Publish
+    "pytest-xdist>=3.5.0",
+    "pytest-timeout>=2.2.0",
+    "respx>=0.20.0",
+    "aioresponses>=0.7.6",
+    "factory-boy>=3.3.0",
+    "faker>=22.0.0",
+    # Build
     "build>=1.0.3",
     "twine>=4.0.2",
 ]
@@ -140,7 +169,7 @@ docs = [
     "mkdocstrings[python]>=0.24.0",
 ]
 
-# Toutes les dépendances (pour un environnement de dev complet)
+# Toutes les dépendances
 all = [
     "nexusdl[cli,gui,dev,docs]",
 ]
@@ -191,7 +220,7 @@ extend-exclude = [
     "build",
     "dist",
     "*.egg-info",
-    "src/nexusdl/interfaces/web/frontend", # Géré par ESLint/Prettier
+    "src/nexusdl/interfaces/web/frontend",
 ]
 
 [tool.ruff.lint]
@@ -199,7 +228,7 @@ select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings
     "F",   # pyflakes
-    "I",   # isort (tri des imports)
+    "I",   # isort
     "N",   # pep8-naming
     "UP",  # pyupgrade
     "B",   # flake8-bugbear
@@ -209,19 +238,17 @@ select = [
     "TCH", # flake8-type-checking
 ]
 ignore = [
-    "E501",    # Line too long (géré par le formatter)
-    "B008",    # Do not perform function call in argument defaults (normal pour FastAPI Depends)
-    "RUF001",  # String contains ambiguous character (acceptable pour les UI)
+    "E501",  # Line too long
+    "B008",  # Function call in argument defaults (FastAPI Depends)
+    "RUF001", # Ambiguous characters
 ]
 
 [tool.ruff.lint.isort]
 known-first-party = ["nexusdl"]
-section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
-skip-magic-trailing-comma = false
 line-ending = "auto"
 
 # ============================================================================
@@ -236,20 +263,19 @@ warn_unused_configs = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 check_untyped_defs = true
-disallow_untyped_decorators = true
 no_implicit_optional = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 warn_no_return = true
-warn_unreachable = true
 
-# Ignorer les erreurs pour les bibliothèques sans stubs de type
 [[tool.mypy.overrides]]
 module = [
     "playwright.*",
     "img2pdf",
     "zipfile_deflate64",
     "passlib.*",
+    "selectolax.*",
+    "sqlite_utils.*",
 ]
 ignore_missing_imports = true
 
@@ -270,17 +296,15 @@ addopts = [
     "--tb=short",
     "--cov=src/nexusdl",
     "--cov-report=term-missing",
-    "--cov-report=xml:coverage.xml",
     "--cov-report=html:htmlcov",
 ]
 markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "slow: marks tests as slow",
     "integration: marks tests as integration tests",
     "e2e: marks tests as end-to-end tests",
     "web: marks tests that require web access",
 ]
 asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
 
 # ============================================================================
 # CONFIGURATION COVERAGE
@@ -304,9 +328,7 @@ exclude_lines = [
     "raise AssertionError",
     "raise NotImplementedError",
     "if 0:",
-    "if __name__ == '__main__':",  # CORRECTION 2 : Regex corrigée (guillemets au lieu de points)
-    "class .*\\bProtocol\\):",
-    "@(abc\\.)?abstractmethod",
+    "if __name__ == .__main__.:",
 ]
 fail_under = 70.0
 show_missing = true

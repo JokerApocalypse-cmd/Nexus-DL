@@ -11,7 +11,7 @@
 # ============================================================================
 
 # ============================================================================
-# STAGE 1 : BUILDER
+# STAGE 1 : BUILDER (installation des dépendances + compilation)
 # ============================================================================
 FROM python:3.12-slim AS builder
 
@@ -127,7 +127,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copier les navigateurs Playwright
 COPY --from=builder /root/.cache/ms-playwright /root/.cache/ms-playwright
 
-# Copier le code source
+# ⚠️ CRITIQUE : Copier TOUT le dossier /app pour garder le lien créé par pip install -e .
 COPY --from=builder /app /app
 
 # ============================================================================

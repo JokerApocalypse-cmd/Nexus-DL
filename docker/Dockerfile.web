@@ -1,19 +1,8 @@
 # ============================================================================
-# NEXUSDL - Dockerfile Web (Backend + Frontend combinés)
+# NEXUSDL - Dockerfile Web (Nginx + FastAPI + Next.js)
 # ============================================================================
-# Combine FastAPI (backend) + Next.js (frontend) dans une seule image
-# Compatible : Railway, Render, Fly.io, AWS, VPS, Docker local
-#
-# Build :
-#   docker build -f docker/Dockerfile.web -t nexusdl-web:latest .
-#
-# Run :
-#   docker run -d -p 8000:8000 -v nexusdl-web-data:/app/data --name nexusdl-web nexusdl-web:latest
-#
-# Accès :
-#   http://localhost:8000           → Frontend Next.js
-#   http://localhost:8000/api/v1    → Backend FastAPI
-#   http://localhost:8000/docs      → Documentation Swagger
+# Architecture :
+#   Nginx (port 80) → FastAPI (port 8001) + Next.js (port 3000)
 # ============================================================================
 
 # ============================================================================
@@ -23,24 +12,20 @@ FROM node:20-alpine AS frontend-builder
 
 WORKDIR /frontend
 
-# Installer pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Copier les fichiers de dépendances frontend
 COPY src/nexusdl/interfaces/web/frontend/package.json ./
 COPY src/nexusdl/interfaces/web/frontend/pnpm-lock.yaml ./
 
-# Installer les dépendances
 RUN pnpm install --frozen-lockfile
 
-# Copier le code source frontend
 COPY src/nexusdl/interfaces/web/frontend/ ./
 
-# Variables d'environnement pour le build
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
-# Build Next.js (mode standalone pour réduire la taille)
+# Build en mode standalone (nécessaire pour Nginx)
+RUN echo 'module.exports = { output: "standalone" }' >> next.config.cjs || true
 RUN pnpm build
 
 # ============================================================================
@@ -51,54 +36,37 @@ FROM python:3.12-slim AS backend-builder
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
     DEBIAN_FRONTEND=noninteractive
 
-# Dépendances système pour compilation
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    gcc \
-    g++ \
-    curl \
-    git \
-    pkg-config \
+    build-essential gcc g++ curl git pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copier les fichiers de dépendances
-COPY pyproject.toml ./
-COPY requirements*.txt ./
-COPY README.md ./
+COPY pyproject.toml requirements*.txt README.md ./
 
-# Installer les dépendances Python
 RUN pip install --upgrade pip setuptools wheel && \
     if [ -f requirements-web.txt ]; then \
         pip install -r requirements-web.txt; \
-    elif [ -f requirements.txt ]; then \
+    else \
         pip install -r requirements.txt; \
     fi
 
-# Copier le code source backend
 COPY src/ ./src/
-
-# Installer le package en mode éditable
 RUN pip install -e .
 
-# Installer Playwright + Chromium
 RUN playwright install --with-deps chromium
 
 # ============================================================================
-# STAGE 3 : RUNTIME (image finale optimisée)
+# STAGE 3 : RUNTIME (Nginx + Python + Node.js)
 # ============================================================================
 FROM python:3.12-slim
 
-# Variables d'environnement
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     NEXUSDL_ENV=production \
-    PORT=8000 \
-    HOST=0.0.0.0 \
+    PORT=80 \
     PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright \
     DEBIAN_FRONTEND=noninteractive \
     NEXT_TELEMETRY_DISABLED=1 \
@@ -108,107 +76,84 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # ============================================================================
-# DÉPENDANCES SYSTÈME POUR LE RUNTIME
+# INSTALLATION DES DÉPENDANCES SYSTÈME
 # ============================================================================
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Utilitaires de base
+    # Nginx (reverse proxy)
+    nginx \
+    # Supervisor (gestion des processus)
+    supervisor \
+    # Node.js (pour Next.js standalone)
+    nodejs \
     curl \
     ca-certificates \
-    # Node.js pour Next.js standalone
-    nodejs \
-    # Dépendances Playwright/Chromium
-    libnss3 \
-    libnspr4 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libxkbcommon0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libpango-1.0-0 \
-    libcairo2 \
-    libasound2 \
-    libatspi2.0-0 \
-    libx11-6 \
-    libxcb1 \
-    libxext6 \
-    libwayland-client0 \
-    # Fonts
-    fonts-liberation \
-    fonts-dejavu-core \
+    # Playwright runtime
+    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+    libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
+    libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2 \
+    libatspi2.0-0 libx11-6 libxcb1 libxext6 libwayland-client0 \
+    fonts-liberation fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================================================
 # COPIER DEPUIS LES BUILDERS
 # ============================================================================
 
-# Copier les packages Python
+# Python packages
 COPY --from=backend-builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=backend-builder /usr/local/bin /usr/local/bin
-
-# Copier les navigateurs Playwright
 COPY --from=backend-builder /root/.cache/ms-playwright /root/.cache/ms-playwright
-
-# Copier le code source backend
 COPY --from=backend-builder /app /app
 
-# Copier le frontend buildé
+# Frontend Next.js standalone
 COPY --from=frontend-builder /frontend/.next/standalone /app/frontend/standalone
 COPY --from=frontend-builder /frontend/.next/static /app/frontend/standalone/.next/static
 COPY --from=frontend-builder /frontend/public /app/frontend/standalone/public
 
 # ============================================================================
-# CONFIGURATION FASTAPI POUR SERVIR LE FRONTEND
+# CONFIGURATION NGINX
 # ============================================================================
 
-# Créer le script de configuration
-RUN cat > /app/configure_static.py << 'EOF'
-"""Configure FastAPI pour servir les fichiers statiques du frontend Next.js."""
-import os
-from pathlib import Path
+# Supprimer la config par défaut de Nginx
+RUN rm -f /etc/nginx/nginx.conf /etc/nginx/sites-enabled/default
 
-# Chemin vers le frontend buildé
-FRONTEND_DIR = Path("/app/frontend/standalone")
+# Copier notre configuration Nginx
+COPY docker/nginx.conf /etc/nginx/nginx.conf
 
-# Vérifier que le frontend existe
-if not FRONTEND_DIR.exists():
-    print(f"⚠️ Frontend directory not found: {FRONTEND_DIR}")
-    exit(1)
-
-print(f"✅ Frontend configured at: {FRONTEND_DIR}")
-print(f"✅ Static files: {FRONTEND_DIR / '.next' / 'static'}")
-print(f"✅ Public files: {FRONTEND_DIR / 'public'}")
-EOF
+# Créer les dossiers de logs Nginx
+RUN mkdir -p /var/log/nginx /var/log/supervisor && \
+    touch /var/log/nginx/access.log /var/log/nginx/error.log
 
 # ============================================================================
-# CRÉER LES DOSSIERS NÉCESSAIRES
+# CONFIGURATION SUPERVISOR
 # ============================================================================
+
+COPY docker/supervisord-web.conf /etc/supervisor/conf.d/supervisord.conf
+
+# ============================================================================
+# DOSSIERS ET PERMISSIONS
+# ============================================================================
+
 RUN mkdir -p /app/data/downloads /app/data/library \
              /app/logs /app/cache /app/config \
     && chmod -R 777 /app/data /app/logs /app/cache /app/config
 
 # ============================================================================
-# SCRIPT D'ENTRÉE
-# ============================================================================
-COPY docker/entrypoint-web.sh /entrypoint-web.sh
-RUN chmod +x /entrypoint-web.sh
-
-# ============================================================================
 # HEALTHCHECK
 # ============================================================================
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:${PORT}/health || exit 1
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+    CMD curl -f http://localhost/health || exit 1
 
 # ============================================================================
-# EXPOSER LE PORT
+# EXPOSITION DU PORT
 # ============================================================================
-EXPOSE ${PORT}
+
+# Un seul port exposé : Nginx
+EXPOSE 80
 
 # ============================================================================
-# POINT D'ENTRÉE
+# POINT D'ENTRÉE : Supervisor gère les 3 processus
 # ============================================================================
-ENTRYPOINT ["/entrypoint-web.sh"]
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

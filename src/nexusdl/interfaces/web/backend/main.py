@@ -49,7 +49,7 @@ Intégration :
 from __future__ import annotations
 
 import asyncio
-import os  # ⚠️ AJOUTÉ : Nécessaire pour lire les variables d'environnement (PORT, HOST, CORS)
+import os
 import sys
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -66,7 +66,6 @@ try:
     from fastapi.middleware.trustedhost import TrustedHostMiddleware
     from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
     from fastapi.responses import HTMLResponse, JSONResponse
-    from fastapi.staticfiles import StaticFiles
     FASTAPI_AVAILABLE = True
 except ImportError:
     FASTAPI_AVAILABLE = False
@@ -929,19 +928,19 @@ def run_api(
 
 # Instance globale de l'application (utilisée par uvicorn)
 # Peut être importée directement : from nexusdl.interfaces.web.backend.main import app
-try:
-    app: FastAPI = create_app() if FASTAPI_AVAILABLE else None  # type: ignore[no-redef]
-except Exception as e:
-    logger.error("Impossible de créer l'application FastAPI par défaut: {}", e)
-    if FASTAPI_AVAILABLE:
+app: FastAPI | None = None
+
+if FASTAPI_AVAILABLE:
+    try:
+        app = create_app()
+    except Exception as e:
+        logger.error("Impossible de créer l'application FastAPI par défaut: {}", e)
         # Créer une app minimale en cas d'erreur
         app = FastAPI(title=APP_NAME, version=APP_VERSION)
 
         @app.get("/")
         async def error_root() -> dict[str, str]:
             return {"error": f"Application initialization failed: {e}"}
-    else:
-        app = None  # type: ignore[assignment]
 
 
 # ============================================================================
